@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>VoiceMail AI — Speak it, send it</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #0b0f0e;
+    --surface: #111714;
+    --surface2: #17201c;
+    --border: #1f2d27;
+    --accent: #00e86c;
+    --accent2: #00b854;
+    --accent-glow: rgba(0,232,108,0.18);
+    --accent-glow2: rgba(0,232,108,0.07);
+    --text: #e8f0eb;
+    --muted: #5a7a65;
+    --danger: #ff4f4f;
+    --radius: 14px;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+    position: relative;
+  }
+  body::before {
+    content: '';
+    position: fixed;
+    top: -20%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 700px; height: 700px;
+    background: radial-gradient(ellipse, rgba(0,232,108,0.06) 0%, transparent 70%);
+    pointer-events: none; z-index: 0;
+  }
+  .noise {
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 0; opacity: 0.5;
+  }
+  .container {
+    position: relative; z-index: 1;
+    max-width: 680px; margin: 0 auto;
+    padding: 60px 24px 80px;
+  }
+  header {
+    text-align: center; margin-bottom: 52px;
+    animation: fadeUp 0.6s ease both;
+  }
+  .logo-mark {
+    display: inline-flex; align-items: center;
+    gap: 10px; margin-bottom: 24px;
+  }
+  .logo-icon {
+    width: 36px; height: 36px;
+    background: var(--accent); border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 24px var(--accent-glow);
+  }
+  .logo-icon svg { width: 20px; height: 20px; }
+  .logo-text {
+    font-family: 'Syne', sans-serif; font-weight: 800;
+    font-size: 1.1rem; letter-spacing: 0.08em;
+    color: var(--accent); text-transform: uppercase;
+  }
+  h1 {
+    font-family: 'Syne', sans-serif; font-weight: 800;
+    font-size: clamp(2.2rem, 5vw, 3.2rem);
+    line-height: 1.1; letter-spacing: -0.02em;
+    color: var(--text); margin-bottom: 14px;
+  }
+  h1 span { color: var(--accent); }
+  .subtitle {
+    font-size: 0.82rem; color: var(--muted);
+    letter-spacing: 0.04em; line-height: 1.7;
+  }
+  .tag-row {
+    display: flex; gap: 8px; justify-content: center;
+    margin-top: 18px; flex-wrap: wrap;
+  }
+  .tag {
+    font-size: 0.68rem; letter-spacing: 0.1em;
+    text-transform: uppercase; padding: 4px 10px;
+    border: 1px solid var(--border); border-radius: 99px;
+    color: var(--muted); background: var(--surface);
+  }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 20px; overflow: hidden;
+    animation: fadeUp 0.6s 0.1s ease both;
+  }
+  .mic-section {
+    padding: 40px 36px 32px;
+    display: flex; flex-direction: column;
+    align-items: center; gap: 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+  }
+  .waveform-container {
+    width: 100%; height: 56px;
+    display: flex; align-items: center;
+    justify-content: center; gap: 3px; overflow: hidden;
+  }
+  .wave-bar {
+    width: 3px; background: var(--border);
+    border-radius: 99px; height: 8px;
+    transition: height 0.1s ease, background 0.3s ease;
+    flex-shrink: 0;
+  }
+  .wave-bar.active { background: var(--accent); }
+  .mic-btn-wrap { position: relative; }
+  .mic-ring {
+    position: absolute; inset: -8px; border-radius: 50%;
+    border: 2px solid var(--accent);
+    opacity: 0; transform: scale(0.8);
+    transition: opacity 0.3s, transform 0.3s;
+  }
+  .mic-btn-wrap.recording .mic-ring {
+    opacity: 0.4; transform: scale(1);
+    animation: pulse-ring 1.5s ease infinite;
+  }
+  @keyframes pulse-ring {
+    0%   { transform: scale(1);    opacity: 0.4; }
+    50%  { transform: scale(1.15); opacity: 0.15; }
+    100% { transform: scale(1);    opacity: 0.4; }
+  }
+  #micBtn {
+    width: 72px; height: 72px; border-radius: 50%;
+    border: none; background: var(--accent); color: #000;
+    cursor: pointer; display: flex; align-items: center;
+    justify-content: center;
+    transition: transform 0.2s ease, background 0.3s ease, box-shadow 0.3s ease;
+    position: relative; z-index: 1;
+  }
+  #micBtn:hover { transform: scale(1.07); box-shadow: 0 0 32px var(--accent-glow); }
+  #micBtn:active { transform: scale(0.95); }
+  #micBtn.recording {
+    background: var(--danger);
+    box-shadow: 0 0 32px rgba(255,79,79,0.3);
+    animation: mic-pulse 1s ease infinite;
+  }
+  @keyframes mic-pulse {
+    0%,100% { box-shadow: 0 0 32px rgba(255,79,79,0.3); }
+    50%      { box-shadow: 0 0 48px rgba(255,79,79,0.5); }
+  }
+  #micBtn svg { width: 28px; height: 28px; }
+  .mic-status {
+    font-size: 0.72rem; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--muted);
+    transition: color 0.3s;
+  }
+  .mic-status.active   { color: var(--accent); }
+  .mic-status.recording { color: var(--danger); }
+  .audio-preview { width: 100%; display: none; }
+  .audio-preview.show { display: block; }
+  .audio-preview audio {
+    width: 100%; height: 36px; border-radius: 8px;
+    filter: invert(1) hue-rotate(100deg) brightness(0.85);
+  }
+
+  /* Form */
+  .form-section { padding: 28px 36px; }
+  .section-label {
+    font-size: 0.6rem; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--accent2);
+    margin-bottom: 12px; display: flex;
+    align-items: center; gap: 8px;
+  }
+  .section-label::after {
+    content: ''; flex: 1; height: 1px;
+    background: var(--border);
+  }
+  .form-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 16px; margin-bottom: 20px;
+  }
+  .field { display: flex; flex-direction: column; gap: 7px; }
+  .field.full { grid-column: 1 / -1; }
+  label {
+    font-size: 0.65rem; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  select, input[type="text"], textarea {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 14px;
+    color: var(--text); font-family: 'DM Mono', monospace;
+    font-size: 0.8rem; outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    width: 100%; appearance: none; -webkit-appearance: none;
+  }
+  select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235a7a65' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
+  }
+  select:focus, input:focus, textarea:focus {
+    border-color: var(--accent2);
+    box-shadow: 0 0 0 3px var(--accent-glow2);
+  }
+  textarea { resize: none; min-height: 72px; line-height: 1.6; }
+  option { background: #111714; }
+
+  /* Relationship hint */
+  .relationship-hint {
+    grid-column: 1 / -1;
+    background: rgba(0,232,108,0.04);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent2);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.7rem;
+    color: var(--muted);
+    line-height: 1.6;
+    display: none;
+  }
+  .relationship-hint.show { display: block; }
+  .relationship-hint strong { color: var(--accent); }
+
+  /* Generate */
+  .generate-wrap { padding: 0 36px 32px; }
+  #generateBtn {
+    width: 100%; padding: 15px; border: none;
+    border-radius: 12px; background: var(--accent);
+    color: #000; font-family: 'Syne', sans-serif;
+    font-weight: 700; font-size: 0.95rem;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    cursor: pointer; transition: all 0.2s ease;
+    display: flex; align-items: center;
+    justify-content: center; gap: 10px;
+    position: relative; overflow: hidden;
+  }
+  #generateBtn::before {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
+    transform: translateX(-100%); transition: transform 0.5s ease;
+  }
+  #generateBtn:hover::before { transform: translateX(100%); }
+  #generateBtn:hover { box-shadow: 0 8px 32px var(--accent-glow); transform: translateY(-1px); }
+  #generateBtn:active { transform: translateY(0); }
+  #generateBtn:disabled {
+    background: var(--border); color: var(--muted);
+    cursor: not-allowed; box-shadow: none; transform: none;
+  }
+  #generateBtn svg { width: 18px; height: 18px; flex-shrink: 0; }
+  .spinner {
+    width: 18px; height: 18px;
+    border: 2px solid rgba(0,0,0,0.2);
+    border-top-color: #000; border-radius: 50%;
+    animation: spin 0.7s linear infinite; flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Result */
+  .result-section { display: none; margin-top: 24px; animation: fadeUp 0.5s ease both; }
+  .result-section.show { display: block; }
+  .result-card {
+    background: var(--surface); border: 1px solid var(--accent2);
+    border-radius: 20px; overflow: hidden;
+    box-shadow: 0 0 40px var(--accent-glow2);
+  }
+  .result-header {
+    padding: 16px 24px; background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center;
+    justify-content: space-between; gap: 12px;
+  }
+  .result-label {
+    font-size: 0.65rem; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--accent);
+    display: flex; align-items: center; gap: 7px;
+  }
+  .result-label::before {
+    content: ''; width: 6px; height: 6px;
+    background: var(--accent); border-radius: 50%;
+    box-shadow: 0 0 8px var(--accent);
+  }
+  .result-actions { display: flex; gap: 8px; }
+  .action-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 8px;
+    border: 1px solid var(--border); background: transparent;
+    color: var(--muted); font-family: 'DM Mono', monospace;
+    font-size: 0.68rem; letter-spacing: 0.06em;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .action-btn:hover { border-color: var(--accent2); color: var(--accent); }
+  .action-btn svg { width: 13px; height: 13px; }
+  .transcript-bar {
+    padding: 10px 24px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(0,0,0,0.2);
+  }
+  .transcript-label {
+    font-size: 0.6rem; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 3px;
+  }
+  #transcriptOut {
+    font-size: 0.75rem; color: var(--muted);
+    font-style: italic; line-height: 1.5;
+  }
+  .subject-bar {
+    padding: 14px 24px; border-bottom: 1px solid var(--border);
+    background: rgba(0,232,108,0.03);
+  }
+  .subject-label {
+    font-size: 0.6rem; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 4px;
+  }
+  #subjectOut {
+    font-family: 'Syne', sans-serif; font-weight: 600;
+    font-size: 1rem; color: var(--text);
+  }
+  #emailBodyOut {
+    padding: 24px; font-size: 0.82rem;
+    line-height: 1.85; color: #c8dcd0;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .toast {
+    position: fixed; bottom: 32px; left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: #1a0a0a; border: 1px solid var(--danger);
+    color: var(--danger); padding: 12px 20px;
+    border-radius: 12px; font-size: 0.75rem;
+    letter-spacing: 0.04em; z-index: 100;
+    transition: transform 0.4s cubic-bezier(0.34,1.56,0.64,1);
+    max-width: 400px; text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  footer {
+    text-align: center; margin-top: 48px;
+    font-size: 0.65rem; color: var(--muted);
+    letter-spacing: 0.08em;
+    animation: fadeUp 0.6s 0.3s ease both;
+  }
+  footer span { color: var(--accent2); }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @media (max-width: 540px) {
+    .form-grid { grid-template-columns: 1fr; }
+    .mic-section, .form-section { padding-left: 20px; padding-right: 20px; }
+    .generate-wrap { padding-left: 20px; padding-right: 20px; }
+    h1 { font-size: 2rem; }
+  }
+</style>
+</head>
+<body>
+<div class="noise"></div>
+<div class="container">
+
+  <header>
+    <div class="logo-mark">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+          <line x1="12" y1="19" x2="12" y2="23"/>
+          <line x1="8" y1="23" x2="16" y2="23"/>
+        </svg>
+      </div>
+      <span class="logo-text">VoiceMail AI</span>
+    </div>
+    <h1>Speak it.<br><span>Send it.</span></h1>
+    <p class="subtitle">Record in Urdu, Roman Urdu, or English.<br>Get a polished business email — instantly.</p>
+    <div class="tag-row">
+      <span class="tag">🇵🇰 Urdu</span>
+      <span class="tag">Roman Urdu</span>
+      <span class="tag">English</span>
+      <span class="tag">Powered by Groq</span>
+    </div>
+  </header>
+
+  <div class="card">
+
+    <!-- Mic -->
+    <div class="mic-section">
+      <div class="waveform-container" id="waveform"></div>
+      <div class="mic-btn-wrap" id="micWrap">
+        <div class="mic-ring"></div>
+        <button id="micBtn" title="Click to record">
+          <svg id="micIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="23"/>
+            <line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+        </button>
+      </div>
+      <p class="mic-status" id="micStatus">Tap to start recording</p>
+      <div class="audio-preview" id="audioPreview">
+        <audio id="audioPlayer" controls></audio>
+      </div>
+    </div>
+
+    <!-- Form -->
+    <div class="form-section">
+
+      <!-- Email Settings -->
+      <div class="section-label">Email Settings</div>
+      <div class="form-grid">
+        <div class="field">
+          <label>Email Type</label>
+          <select id="emailType">
+            <option value="general-business">General Business</option>
+            <option value="client-followup">Client Follow-Up</option>
+            <option value="vendor-inquiry">Vendor Inquiry</option>
+            <option value="partnership-proposal">Partnership Proposal</option>
+            <option value="complaint-resolution">Complaint Resolution</option>
+            <option value="meeting-request">Meeting Request</option>
+            <option value="project-update">Project Update</option>
+            <option value="invoice-payment">Invoice / Payment</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Tone</label>
+          <select id="tone">
+            <option value="professional">Professional</option>
+            <option value="friendly">Friendly</option>
+            <option value="assertive">Assertive</option>
+            <option value="apologetic">Apologetic</option>
+            <option value="persuasive">Persuasive</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Sender Info -->
+      <div class="section-label">Sender Info</div>
+      <div class="form-grid">
+        <div class="field">
+          <label>Your Name (optional)</label>
+          <input type="text" id="senderName" placeholder="e.g. Taha Ahmed"/>
+        </div>
+        <div class="field">
+          <label>Your Designation (optional)</label>
+          <select id="senderDesignation">
+            <option value="">— Select designation —</option>
+            <option value="CEO">CEO</option>
+            <option value="COO">COO</option>
+            <option value="CFO">CFO</option>
+            <option value="CTO">CTO</option>
+            <option value="Director">Director</option>
+            <option value="General Manager">General Manager</option>
+            <option value="Manager">Manager</option>
+            <option value="Senior Manager">Senior Manager</option>
+            <option value="Assistant Manager">Assistant Manager</option>
+            <option value="Team Lead">Team Lead</option>
+            <option value="Senior Executive">Senior Executive</option>
+            <option value="Executive">Executive</option>
+            <option value="Business Development Manager">BD Manager</option>
+            <option value="Sales Manager">Sales Manager</option>
+            <option value="Marketing Manager">Marketing Manager</option>
+            <option value="HR Manager">HR Manager</option>
+            <option value="Accounts Manager">Accounts Manager</option>
+            <option value="Project Manager">Project Manager</option>
+            <option value="Intern">Intern</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Recipient Info -->
+      <div class="section-label">Recipient Info</div>
+      <div class="form-grid">
+        <div class="field">
+          <label>Recipient Name (optional)</label>
+          <input type="text" id="recipient" placeholder="e.g. Mr. Bilal Khan"/>
+        </div>
+        <div class="field">
+          <label>Recipient Role (optional)</label>
+          <select id="recipientRole">
+            <option value="">— Select role —</option>
+            <option value="CEO">CEO</option>
+            <option value="COO">COO</option>
+            <option value="CFO">CFO</option>
+            <option value="CTO">CTO</option>
+            <option value="Director">Director</option>
+            <option value="General Manager">General Manager</option>
+            <option value="Senior Manager">Senior Manager</option>
+            <option value="Manager">Manager</option>
+            <option value="Assistant Manager">Assistant Manager</option>
+            <option value="Team Lead">Team Lead</option>
+            <option value="Senior Executive">Senior Executive</option>
+            <option value="Executive">Executive</option>
+            <option value="Employee">Employee</option>
+            <option value="Intern">Intern</option>
+            <option value="Client">Client</option>
+            <option value="Vendor">Vendor</option>
+            <option value="Partner">Partner</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+
+        <!-- Dynamic relationship hint -->
+        <div class="relationship-hint" id="relationshipHint"></div>
+
+        <div class="field full">
+          <label>Extra Context (optional)</label>
+          <textarea id="extraContext" placeholder="e.g. Following up on last week's meeting about the software project…"></textarea>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Generate -->
+    <div class="generate-wrap">
+      <button id="generateBtn" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+        </svg>
+        Generate Email
+      </button>
+    </div>
+
+  </div>
+
+  <!-- Result -->
+  <div class="result-section" id="resultSection">
+    <div class="result-card">
+      <div class="result-header">
+        <span class="result-label">Generated Email</span>
+        <div class="result-actions">
+          <button class="action-btn" id="copyBtn" onclick="copyEmail()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Copy
+          </button>
+          <button class="action-btn" onclick="resetAll()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/></svg>
+            New
+          </button>
+        </div>
+      </div>
+      <div class="transcript-bar">
+        <div class="transcript-label">Transcription</div>
+        <div id="transcriptOut">—</div>
+      </div>
+      <div class="subject-bar">
+        <div class="subject-label">Subject</div>
+        <div id="subjectOut">—</div>
+      </div>
+      <div id="emailBodyOut"></div>
+    </div>
+  </div>
+
+  <footer>
+    Powered by <span>Groq Whisper · Llama 3.3 · n8n</span> &nbsp;·&nbsp; Your voice is never stored
+  </footer>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  // ── Waveform ──────────────────────────────────────────────────────
+  const waveform = document.getElementById('waveform');
+  const BAR_COUNT = 60;
+  const bars = [];
+  for (let i = 0; i < BAR_COUNT; i++) {
+    const b = document.createElement('div');
+    b.className = 'wave-bar';
+    waveform.appendChild(b);
+    bars.push(b);
+  }
+  let waveInterval = null, analyser = null, dataArray = null, animFrame = null;
+
+  function startIdleWave() {
+    waveInterval = setInterval(() => {
+      bars.forEach((b, i) => {
+        const h = 4 + Math.abs(Math.sin(Date.now()/600 + i*0.35)) * 10;
+        b.style.height = h + 'px';
+      });
+    }, 60);
+  }
+  function stopIdleWave() {
+    clearInterval(waveInterval);
+    bars.forEach(b => { b.style.height = '8px'; b.classList.remove('active'); });
+  }
+  function startLiveWave() {
+    function draw() {
+      animFrame = requestAnimationFrame(draw);
+      if (!analyser) return;
+      analyser.getByteFrequencyData(dataArray);
+      const step = Math.floor(dataArray.length / BAR_COUNT);
+      bars.forEach((b, i) => {
+        const val = dataArray[i * step] || 0;
+        b.style.height = (4 + (val/255)*48) + 'px';
+        b.classList.add('active');
+      });
+    }
+    draw();
+  }
+  startIdleWave();
+
+  // ── Relationship Hint ─────────────────────────────────────────────
+  const SENIORITY = {
+    'CEO': 10, 'COO': 9, 'CFO': 9, 'CTO': 9, 'Director': 8,
+    'General Manager': 7, 'Senior Manager': 6, 'Manager': 5,
+    'Assistant Manager': 4, 'Team Lead': 3, 'Senior Executive': 3,
+    'Business Development Manager': 5, 'Sales Manager': 5,
+    'Marketing Manager': 5, 'HR Manager': 5, 'Accounts Manager': 5,
+    'Project Manager': 5, 'Executive': 2, 'Employee': 2, 'Intern': 1,
+    'Client': 6, 'Vendor': 5, 'Partner': 6, 'Other': 5
+  };
+
+  const hintEl = document.getElementById('relationshipHint');
+
+  function updateHint() {
+    const sd = document.getElementById('senderDesignation').value;
+    const rr = document.getElementById('recipientRole').value;
+    if (!sd || !rr) { hintEl.classList.remove('show'); return; }
+
+    const sLevel = SENIORITY[sd] || 5;
+    const rLevel = SENIORITY[rr] || 5;
+
+    let msg = '';
+    if (rr === 'Client') {
+      msg = `📨 Writing to a <strong>Client</strong> — email will be courteous, solution-focused, and value-driven.`;
+    } else if (rr === 'Vendor') {
+      msg = `📦 Writing to a <strong>Vendor</strong> — email will be clear, transactional, and business-like.`;
+    } else if (rr === 'Partner') {
+      msg = `🤝 Writing to a <strong>Partner</strong> — email will be collaborative and mutually respectful.`;
+    } else if (rLevel > sLevel + 2) {
+      msg = `⬆️ Writing to a <strong>superior (${rr})</strong> — email will be respectful, formal, and concise.`;
+    } else if (rLevel < sLevel - 2) {
+      msg = `⬇️ Writing to a <strong>subordinate (${rr})</strong> — email will be clear, directive, and professional.`;
+    } else {
+      msg = `↔️ Writing to a <strong>peer (${rr})</strong> — email will be collegial, direct, and professional.`;
+    }
+
+    hintEl.innerHTML = msg;
+    hintEl.classList.add('show');
+  }
+
+  document.getElementById('senderDesignation').addEventListener('change', updateHint);
+  document.getElementById('recipientRole').addEventListener('change', updateHint);
+
+  // ── Recording ─────────────────────────────────────────────────────
+  const micBtn    = document.getElementById('micBtn');
+  const micWrap   = document.getElementById('micWrap');
+  const micStatus = document.getElementById('micStatus');
+  const audioPreview = document.getElementById('audioPreview');
+  const audioPlayer  = document.getElementById('audioPlayer');
+  const generateBtn  = document.getElementById('generateBtn');
+
+  let mediaRecorder = null, audioChunks = [], audioBlob = null;
+  let isRecording = false, audioContext = null;
+
+  micBtn.addEventListener('click', toggleRecording);
+
+  async function toggleRecording() {
+    if (!isRecording) await startRecording(); else stopRecording();
+  }
+
+  async function startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      dataArray = new Uint8Array(analyser.frequencyBinCount);
+      audioContext.createMediaStreamSource(stream).connect(analyser);
+
+      mediaRecorder = new MediaRecorder(stream);
+      audioChunks = [];
+      mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+      mediaRecorder.onstop = handleStop;
+      mediaRecorder.start();
+
+      isRecording = true;
+      micBtn.classList.add('recording');
+      micWrap.classList.add('recording');
+      micStatus.textContent = 'Recording… tap to stop';
+      micStatus.className = 'mic-status recording';
+      document.getElementById('micIcon').innerHTML = `<rect x="6" y="6" width="12" height="12" rx="2" fill="white" stroke="none"/>`;
+      stopIdleWave(); startLiveWave();
+    } catch(e) {
+      showToast('Microphone access denied. Please allow mic permissions.');
+    }
+  }
+
+  function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+      mediaRecorder.stream.getTracks().forEach(t => t.stop());
+    }
+    cancelAnimationFrame(animFrame);
+    if (audioContext) audioContext.close();
+    analyser = null; dataArray = null;
+    isRecording = false;
+    micBtn.classList.remove('recording');
+    micWrap.classList.remove('recording');
+    micStatus.textContent = 'Processing…';
+    micStatus.className = 'mic-status';
+    stopIdleWave();
+    bars.forEach(b => { b.style.height = '8px'; b.classList.remove('active'); });
+  }
+
+  function handleStop() {
+    audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+    audioPlayer.src = URL.createObjectURL(audioBlob);
+    audioPreview.classList.add('show');
+    micStatus.textContent = 'Recording saved — ready to generate';
+    micStatus.className = 'mic-status active';
+    document.getElementById('micIcon').innerHTML = `
+      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+      <line x1="12" y1="19" x2="12" y2="23"/>
+      <line x1="8" y1="23" x2="16" y2="23"/>`;
+    generateBtn.disabled = false;
+    startIdleWave();
+  }
+
+  // ── Generate ──────────────────────────────────────────────────────
+  const WEBHOOK_URL = 'https://muhammad245678.app.n8n.cloud/webhook/voice-to-email';
+
+  generateBtn.addEventListener('click', async () => {
+    if (!audioBlob) { showToast('Please record a voice note first.'); return; }
+
+    generateBtn.disabled = true;
+    generateBtn.innerHTML = `<div class="spinner"></div> Generating…`;
+
+    try {
+      const base64 = await blobToBase64(audioBlob);
+
+      const payload = {
+        audio:              base64.split(',')[1],
+        mimeType:           'audio/webm',
+        emailType:          document.getElementById('emailType').value,
+        tone:               document.getElementById('tone').value,
+        senderName:         document.getElementById('senderName').value.trim(),
+        senderDesignation:  document.getElementById('senderDesignation').value,
+        recipient:          document.getElementById('recipient').value.trim(),
+        recipientRole:      document.getElementById('recipientRole').value,
+        extraContext:       document.getElementById('extraContext').value.trim()
+      };
+
+      const res  = await fetch(WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || data.details || 'Server error');
+
+      document.getElementById('transcriptOut').textContent = data.transcript || '—';
+      document.getElementById('subjectOut').textContent    = data.subject    || '(No subject)';
+      document.getElementById('emailBodyOut').textContent  = data.emailBody  || data.fullOutput || '';
+      document.getElementById('resultSection').classList.add('show');
+      document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    } catch(err) {
+      showToast('Error: ' + (err.message || 'Something went wrong. Make sure n8n is active.'));
+    } finally {
+      generateBtn.disabled = false;
+      generateBtn.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+        </svg>
+        Generate Email`;
+    }
+  });
+
+  // ── Helpers ───────────────────────────────────────────────────────
+  function blobToBase64(blob) {
+    return new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onloadend = () => res(r.result);
+      r.onerror   = rej;
+      r.readAsDataURL(blob);
+    });
+  }
+
+  function copyEmail() {
+    const subject = document.getElementById('subjectOut').textContent;
+    const body    = document.getElementById('emailBodyOut').textContent;
+    navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`).then(() => {
+      const btn = document.getElementById('copyBtn');
+      btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Copied!`;
+      setTimeout(() => {
+        btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy`;
+      }, 2000);
+    });
+  }
+
+  function resetAll() {
+    audioBlob = null;
+    audioPreview.classList.remove('show');
+    audioPlayer.src = '';
+    document.getElementById('resultSection').classList.remove('show');
+    generateBtn.disabled = true;
+    micStatus.textContent = 'Tap to start recording';
+    micStatus.className = 'mic-status';
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 4000);
+  }
+</script>
+</body>
+</html>
